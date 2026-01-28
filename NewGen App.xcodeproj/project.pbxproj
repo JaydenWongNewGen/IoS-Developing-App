@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		8A816DFA2F2AA9FE00E77601 /* NewGen App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NewGen App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		8A816E102F2ABAB300E77601 /* NewGen App.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = "NewGen App.xcodeproj"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -41,6 +42,13 @@
 			isa = PBXGroup;
 			children = (
 				8A816DFA2F2AA9FE00E77601 /* NewGen App.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8A816E122F2ABAB300E77601 /* Products */ = {
+			isa = PBXGroup;
+			children = (
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -97,6 +105,12 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8A816DFB2F2AA9FE00E77601 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 8A816E122F2ABAB300E77601 /* Products */;
+					ProjectRef = 8A816E102F2ABAB300E77601 /* NewGen App.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				8A816DF92F2AA9FE00E77601 /* NewGen App */,
