@@ -10,8 +10,10 @@ import Charts
 import Combine
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isLoggedIn = false
     @State private var enrollmentComplete = false
+    @State private var isCreatingAccount = false
 
     // Enrollment fields
     @State private var fullName = ""
@@ -35,6 +37,7 @@ struct ContentView: View {
     @State private var reminderTime = Date()
 
     private let liveTimer = Timer.publish(every: 7, on: .main, in: .common).autoconnect()
+    private let viewTransition: AnyTransition = .move(edge: .bottom).combined(with: .opacity)
 
     var body: some View {
         ZStack {
@@ -42,63 +45,100 @@ struct ContentView: View {
 
             NavigationStack {
                 ZStack {
-                    Theme.sceneGradient.ignoresSafeArea()
-                    if !isLoggedIn {
-                        LoginView(isLoggedIn: $isLoggedIn)
-                    } else if !enrollmentComplete {
-                        EnrollmentView(fullName: $fullName,
-                                       email: $email,
-                                       dateOfBirth: $dateOfBirth,
-                                       consentAccepted: $consentAccepted,
-                                       enrollmentComplete: $enrollmentComplete)
-                    } else {
-                        TabView {
-                            DashboardView(latestBPM: $latestBPM,
-                                          threshold: $threshold,
-                                          thresholdAlertsEnabled: $thresholdAlertsEnabled,
-                                          trendSamples: $trendSamples,
-                                          lastSampleDate: lastSampleDate,
-                                          activeSensor: activeSensor)
-                                .tabItem { Label("Results", systemImage: "heart.fill") }
+                    Theme.sceneGradient(colorScheme).ignoresSafeArea()
+                    Group {
+                        if !isLoggedIn {
+                            if isCreatingAccount {
+                                CreateAccountView(fullName: $fullName,
+                                                  email: $email,
+                                                  onCancel: {
+                                                      withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                                                          isCreatingAccount = false
+                                                      }
+                                                  },
+                                                  onCreated: {
+                                                      withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                                                          consentAccepted = false
+                                                          dateOfBirth = Date(timeIntervalSince1970: 0)
+                                                          enrollmentComplete = false
+                                                          isLoggedIn = true
+                                                          isCreatingAccount = false
+                                                      }
+                                                  })
+                                    .transition(viewTransition)
+                            } else {
+                                LoginView(onLogin: {
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                                        enrollmentComplete = true
+                                        isLoggedIn = true
+                                    }
+                                }, onCreateAccount: {
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                                        isCreatingAccount = true
+                                    }
+                                })
+                                .transition(viewTransition)
+                        }
+                        } else if !enrollmentComplete {
+                            EnrollmentView(fullName: $fullName,
+                                           email: $email,
+                                           dateOfBirth: $dateOfBirth,
+                                           consentAccepted: $consentAccepted,
+                                           enrollmentComplete: $enrollmentComplete)
+                                .transition(viewTransition)
+                        } else {
+                            TabView {
+                                DashboardView(latestBPM: $latestBPM,
+                                              threshold: $threshold,
+                                              thresholdAlertsEnabled: $thresholdAlertsEnabled,
+                                              trendSamples: $trendSamples,
+                                              lastSampleDate: lastSampleDate,
+                                              activeSensor: activeSensor)
+                                    .tabItem { Label("Results", systemImage: "heart.fill") }
 
-                            MonitorView(bluetoothSyncing: $bluetoothSyncing,
-                                        bluetoothProgress: $bluetoothProgress,
-                                        latestBPM: $latestBPM,
-                                        threshold: $threshold,
-                                        thresholdAlertsEnabled: $thresholdAlertsEnabled,
-                                        symptoms: $symptoms,
-                                        trendSamples: $trendSamples,
-                                        lastSampleDate: $lastSampleDate,
-                                        activeSensor: $activeSensor)
-                                .tabItem { Label("Monitor", systemImage: "waveform.path.ecg") }
+                                MonitorView(bluetoothSyncing: $bluetoothSyncing,
+                                            bluetoothProgress: $bluetoothProgress,
+                                            latestBPM: $latestBPM,
+                                            threshold: $threshold,
+                                            thresholdAlertsEnabled: $thresholdAlertsEnabled,
+                                            symptoms: $symptoms,
+                                            trendSamples: $trendSamples,
+                                            lastSampleDate: $lastSampleDate,
+                                            activeSensor: $activeSensor)
+                                    .tabItem { Label("Monitor", systemImage: "waveform.path.ecg") }
 
                             SettingsView(notificationsEnabled: $notificationsEnabled,
                                          reminderTime: $reminderTime,
                                          threshold: $threshold,
-                                         thresholdAlertsEnabled: $thresholdAlertsEnabled)
-                                .tabItem { Label("Settings", systemImage: "bell.badge.fill") }
+                                         thresholdAlertsEnabled: $thresholdAlertsEnabled,
+                                         onSignOut: signOut)
+                                    .tabItem { Label("Settings", systemImage: "bell.badge.fill") }
                         }
-                        .scrollContentBackground(.hidden)
+                            .scrollContentBackground(.hidden)
+                            .transition(viewTransition)
+                        }
                     }
                 }
             }
         }
-        .accentColor(Theme.accent)
+        .accentColor(Theme.accent(colorScheme))
         .onReceive(liveTimer) { _ in
             guard enrollmentComplete else { return }
             let bpm = Int.random(in: 68...112)
             latestBPM = bpm
             appendSample(bpm)
         }
-        .preferredColorScheme(.dark)
+        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: isLoggedIn)
+        .animation(.spring(response: 0.5, dampingFraction: 0.9), value: enrollmentComplete)
     }
 
     private var brandBackground: some View {
-        ZStack {
-            Theme.sceneGradient
+        let palette = Theme.palette(for: colorScheme)
+        return ZStack {
+            Theme.sceneGradient(colorScheme)
                 .ignoresSafeArea()
 
-            RadialGradient(colors: [Theme.glow, .clear],
+            RadialGradient(colors: [palette.glow, .clear],
                            center: .topTrailing,
                            startRadius: 80,
                            endRadius: 520)
@@ -110,7 +150,7 @@ struct ContentView: View {
                 .blendMode(.screen)
                 .ignoresSafeArea()
 
-            AnimatedBlobBackground()
+            AnimatedBlobBackground(palette: palette)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
@@ -122,6 +162,23 @@ struct ContentView: View {
         if trendSamples.count > 14 { trendSamples.removeFirst() }
         lastSampleDate = Date()
     }
+
+    private func signOut() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+            isLoggedIn = false
+            enrollmentComplete = false
+            isCreatingAccount = false
+            fullName = ""
+            email = ""
+            passwordReset()
+            consentAccepted = false
+        }
+    }
+
+    private func passwordReset() {
+        // reset any password fields indirectly by toggling view state
+        // login/create-account views own their own local password state
+    }
 }
 
 #Preview {
@@ -131,42 +188,49 @@ struct ContentView: View {
 // MARK: - Auth and enrollment
 
 struct LoginView: View {
-    @Binding var isLoggedIn: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    var onLogin: () -> Void
+    var onCreateAccount: () -> Void
     @State private var email = ""
     @State private var password = ""
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(spacing: 18) {
                 Spacer(minLength: 12)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Label("NewGen", systemImage: "bolt.heart.fill")
-                        .font(Typography.eyebrow)
-                        .foregroundStyle(.white.opacity(0.8))
-                    Text("Feel in control.\nStay ahead.")
-                        .font(Typography.hero)
-                        .foregroundStyle(.white)
+                    HStack(spacing: 12) {
+                        BrandLogo(size: 46)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("NewGen")
+                                .font(Typography.eyebrow)
+                                .foregroundStyle(Theme.accent2(colorScheme))
+                            Text("Feel in control.\nStay ahead.")
+                                .font(Typography.hero)
+                                .foregroundStyle(.black.opacity(0.9))
+                        }
+                    }
                     Text("Sign in to sync your sensors, surface trends, and get notified when something needs attention.")
-                        .foregroundColor(.white.opacity(0.75))
+                        .foregroundColor(.black.opacity(0.65))
                         .font(Typography.body)
                 }
                 .padding(22)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.primaryGradient)
+                .background(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        .stroke(Color.black.opacity(0.05), lineWidth: 1)
                 )
-                .shadow(color: Theme.accent.opacity(0.35), radius: 18, x: 0, y: 12)
+                .shadow(color: Theme.accent(colorScheme).opacity(0.12), radius: 22, x: 0, y: 18)
 
                 VStack(alignment: .leading, spacing: 16) {
-                    floatingField("Email", text: $email, icon: "envelope")
-                    floatingSecure("Password", text: $password, icon: "lock")
+                    floatingField("Email", text: $email, icon: "envelope", colorScheme: colorScheme)
+                    floatingSecure("Password", text: $password, icon: "lock", colorScheme: colorScheme)
 
                     Button {
-                        isLoggedIn = true
+                        onLogin()
                     } label: {
                         HStack {
                             Spacer()
@@ -177,22 +241,36 @@ struct LoginView: View {
                         }
                         .padding(.vertical, 12)
                     }
-                    .buttonStyle(GradientButtonStyle(enabled: !email.isEmpty && !password.isEmpty))
+                    .buttonStyle(GradientButtonStyle(enabled: !email.isEmpty && !password.isEmpty, colorScheme: colorScheme))
                     .disabled(email.isEmpty || password.isEmpty)
 
                     DividerView(label: "or continue with")
 
                     VStack(spacing: 10) {
                         SocialButton(provider: .apple) {
-                            isLoggedIn = true
+                            onLogin()
                         }
                         SocialButton(provider: .google) {
-                            isLoggedIn = true
+                            onLogin()
                         }
                         SocialButton(provider: .email) {
-                            isLoggedIn = true
+                            onLogin()
                         }
                     }
+
+                    Button {
+                        onCreateAccount()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.badge.plus")
+                            Text("Create account")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    .buttonStyle(GhostButtonStyle(colorScheme: colorScheme))
                 }
 
                 Spacer(minLength: 12)
@@ -200,11 +278,103 @@ struct LoginView: View {
             .padding(.horizontal, 20)
         }
         .scrollIndicators(.hidden)
-        .background(Theme.sceneGradient)
+        .background(Theme.sceneGradient(colorScheme))
+    }
+}
+
+struct CreateAccountView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var fullName: String
+    @Binding var email: String
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    var onCancel: () -> Void
+    var onCreated: () -> Void
+
+    private var passwordsMatch: Bool {
+        !password.isEmpty && password == confirmPassword
+    }
+
+    private var formValid: Bool {
+        !fullName.isEmpty && !email.isEmpty && passwordsMatch && password.count >= 8
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                Spacer(minLength: 12)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Create account", systemImage: "person.badge.plus")
+                        .font(Typography.eyebrow)
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text("Welcome to NewGen")
+                        .font(Typography.hero)
+                        .foregroundStyle(.white)
+                    Text("Set up your login, then review the study consent on the next step.")
+                        .foregroundColor(.white.opacity(0.75))
+                        .font(Typography.body)
+                }
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.primaryGradient(colorScheme))
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+                .shadow(color: Theme.accent(colorScheme).opacity(0.35), radius: 18, x: 0, y: 12)
+
+                VStack(alignment: .leading, spacing: 16) {
+                    floatingField("Full name", text: $fullName, icon: "person", colorScheme: colorScheme)
+                    floatingField("Email", text: $email, icon: "envelope", colorScheme: colorScheme)
+                    floatingSecure("Password (min 8 chars)", text: $password, icon: "lock", colorScheme: colorScheme)
+                    floatingSecure("Confirm password", text: $confirmPassword, icon: "lock.rotation", colorScheme: colorScheme)
+
+                    if !passwordsMatch && !confirmPassword.isEmpty {
+                        Label("Passwords must match", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                    }
+
+                    Button {
+                        onCreated()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Continue to consent")
+                                .font(Typography.button)
+                            Image(systemName: "arrow.right.circle.fill")
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(GradientButtonStyle(enabled: formValid, colorScheme: colorScheme))
+                    .disabled(!formValid)
+
+                    Button(action: onCancel) {
+                        HStack {
+                            Spacer()
+                            Text("Back to login")
+                                .font(Typography.button)
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(GhostButtonStyle(colorScheme: colorScheme))
+                }
+
+                Spacer(minLength: 12)
+            }
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+        .background(Theme.sceneGradient(colorScheme))
     }
 }
 
 struct EnrollmentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var fullName: String
     @Binding var email: String
     @Binding var dateOfBirth: Date
@@ -224,11 +394,11 @@ struct EnrollmentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(spacing: 14) {
-                    floatingField("Full name", text: $fullName, icon: "person")
-                    floatingField("Email", text: $email, icon: "envelope")
+                    floatingField("Full name", text: $fullName, icon: "person", colorScheme: colorScheme)
+                    floatingField("Email", text: $email, icon: "envelope", colorScheme: colorScheme)
                     DatePicker("Date of birth", selection: $dateOfBirth, displayedComponents: .date)
                         .padding()
-                        .background(Theme.cardGradient)
+                        .background(Theme.cardGradient(colorScheme))
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.08), lineWidth: 1))
                 }
@@ -243,7 +413,7 @@ struct EnrollmentView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    .toggleStyle(SwitchToggleStyle(tint: Theme.accent))
+                    .toggleStyle(SwitchToggleStyle(tint: Theme.accent(colorScheme)))
 
                     NavigationLink {
                         ConsentDetails()
@@ -255,33 +425,35 @@ struct EnrollmentView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding()
-                        .background(Theme.cardGradient)
+                        .background(Theme.cardGradient(colorScheme))
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.08), lineWidth: 1))
                     }
                 }
-                .cardStyle()
+                .cardStyle(colorScheme)
 
                 Button {
-                    enrollmentComplete = true
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) {
+                        enrollmentComplete = true
+                    }
                 } label: {
                     Text("Finish enrollment")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
-                        .background(AnyShapeStyle(consentAccepted && !fullName.isEmpty && !email.isEmpty ? Theme.primaryGradient : Theme.muted))
+                        .background(AnyShapeStyle(consentAccepted && !fullName.isEmpty && !email.isEmpty ? Theme.primaryGradient(colorScheme) : Theme.muted(colorScheme)))
                         .foregroundColor(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .shadow(color: Theme.accent.opacity(0.25), radius: 12, x: 0, y: 10)
+                        .shadow(color: Theme.accent(colorScheme).opacity(0.25), radius: 12, x: 0, y: 10)
                 }
                 .disabled(!consentAccepted || fullName.isEmpty || email.isEmpty)
             }
             .padding()
         }
         .scrollIndicators(.hidden)
-        .background(Theme.sceneGradient)
+        .background(Theme.sceneGradient(colorScheme))
         .navigationTitle("Enrollment")
         .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarBackground(Theme.bgMid.opacity(0.6), for: .navigationBar)
+        .toolbarBackground(Theme.palette(for: colorScheme).bgMid.opacity(0.6), for: .navigationBar)
     }
 }
 
@@ -304,6 +476,7 @@ struct ConsentDetails: View {
 // MARK: - Dashboard
 
 struct DashboardView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var latestBPM: Int
     @Binding var threshold: Int
     @Binding var thresholdAlertsEnabled: Bool
@@ -314,6 +487,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                brandHeader
                 resultCard
                 thresholdCard
                 trendCard
@@ -322,7 +496,7 @@ struct DashboardView: View {
         }
         .navigationTitle("Results")
         .scrollIndicators(.hidden)
-        .background(Theme.sceneGradient)
+        .background(Theme.sceneGradient(colorScheme))
     }
 
     private var resultCard: some View {
@@ -345,7 +519,7 @@ struct DashboardView: View {
             StatBadge(text: "Live sensor stream", icon: "dot.radiowaves.left.and.right")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var thresholdCard: some View {
@@ -364,7 +538,7 @@ struct DashboardView: View {
                 PillSlider(value: Binding(
                     get: { Double(threshold) },
                     set: { threshold = Int($0) }
-                ), range: 60...140, step: 1, gradient: Theme.primaryGradient, thumbColor: Theme.accentWarm)
+                ), range: 60...140, step: 1, gradient: Theme.primaryGradient(colorScheme), thumbColor: Theme.accentWarm(colorScheme), track: Theme.cardGradient(colorScheme))
                     .frame(height: 34)
                 Text("\(threshold)")
                     .frame(width: 48)
@@ -373,7 +547,7 @@ struct DashboardView: View {
             Label(thresholdStatusText, systemImage: thresholdStatusIcon)
                 .foregroundColor(thresholdStatusColor)
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var trendCard: some View {
@@ -392,7 +566,7 @@ struct DashboardView: View {
             }
             .frame(height: 180)
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var thresholdStatusText: String {
@@ -409,11 +583,28 @@ struct DashboardView: View {
         if !thresholdAlertsEnabled { return .gray }
         return latestBPM >= threshold ? .orange : .green
     }
+
+    private var brandHeader: some View {
+        HStack(spacing: 12) {
+            BrandLogo(size: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("NewGen")
+                    .font(Typography.title)
+                    .foregroundStyle(Theme.accent(colorScheme))
+                Text("Health monitoring")
+                    .font(Typography.caption)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+    }
 }
 
 // MARK: - Monitor
 
 struct MonitorView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var bluetoothSyncing: Bool
     @Binding var bluetoothProgress: Double
     @Binding var latestBPM: Int
@@ -438,7 +629,7 @@ struct MonitorView: View {
         }
         .navigationTitle("Monitor")
         .scrollIndicators(.hidden)
-        .background(Theme.sceneGradient)
+        .background(Theme.sceneGradient(colorScheme))
     }
 
     private var sensorPicker: some View {
@@ -460,7 +651,7 @@ struct MonitorView: View {
                             }
                             .padding(10)
                             .frame(maxWidth: 220, alignment: .leading)
-                            .background(AnyShapeStyle(sensor == activeSensor ? Theme.primaryGradient : Theme.cardGradient))
+                            .background(AnyShapeStyle(sensor == activeSensor ? Theme.primaryGradient(colorScheme) : Theme.cardGradient(colorScheme)))
                             .foregroundColor(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(
@@ -476,7 +667,7 @@ struct MonitorView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var bluetoothCard: some View {
@@ -501,10 +692,10 @@ struct MonitorView: View {
                 Label("Start sync", systemImage: "bolt.horizontal.circle")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
-                    .background(Theme.primaryGradient)
+                    .background(Theme.primaryGradient(colorScheme))
                     .foregroundColor(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: Theme.accent.opacity(0.35), radius: 14, x: 0, y: 10)
+                    .shadow(color: Theme.accent(colorScheme).opacity(0.35), radius: 14, x: 0, y: 10)
             }
             .disabled(bluetoothSyncing)
 
@@ -517,7 +708,7 @@ struct MonitorView: View {
             }
             .disabled(!bluetoothSyncing)
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var cellularCard: some View {
@@ -542,7 +733,7 @@ struct MonitorView: View {
 
             thresholdNotice
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private var thresholdNotice: some View {
@@ -577,7 +768,7 @@ struct MonitorView: View {
             }
             .font(.subheadline)
         }
-        .cardStyle()
+        .cardStyle(colorScheme)
     }
 
     private func animateSync() {
@@ -608,10 +799,12 @@ struct MonitorView: View {
 // MARK: - Settings
 
 struct SettingsView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var notificationsEnabled: Bool
     @Binding var reminderTime: Date
     @Binding var threshold: Int
     @Binding var thresholdAlertsEnabled: Bool
+    var onSignOut: () -> Void
 
     var body: some View {
         ScrollView {
@@ -626,19 +819,19 @@ struct SettingsView: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("Push notifications", isOn: $notificationsEnabled)
-                        .toggleStyle(SwitchToggleStyle(tint: Theme.accent))
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.accent(colorScheme)))
                     DatePicker("Reminder time", selection: $reminderTime, displayedComponents: .hourAndMinute)
                 }
-                .cardStyle()
+                .cardStyle(colorScheme)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("Enable alerts", isOn: $thresholdAlertsEnabled)
-                        .toggleStyle(SwitchToggleStyle(tint: Theme.accent))
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.accent(colorScheme)))
                     HStack {
                         PillSlider(value: Binding(
                             get: { Double(threshold) },
                             set: { threshold = Int($0) }
-                        ), range: 60...140, step: 1, gradient: Theme.primaryGradient, thumbColor: Theme.accentWarm)
+                        ), range: 60...140, step: 1, gradient: Theme.primaryGradient(colorScheme), thumbColor: Theme.accentWarm(colorScheme), track: Theme.cardGradient(colorScheme))
                             .frame(height: 34)
                         Text("\(threshold)")
                             .frame(width: 44)
@@ -647,12 +840,10 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                .cardStyle()
+                .cardStyle(colorScheme)
 
                 NavigationLink {
-                    Text("Account settings placeholder.")
-                        .padding()
-                        .navigationTitle("Account")
+                    AccountSettingsView(onSignOut: onSignOut)
                 } label: {
                     HStack {
                         Label("Manage account", systemImage: "person.crop.circle")
@@ -661,14 +852,30 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding()
-                    .cardStyle()
+                    .cardStyle(colorScheme)
                 }
             }
             .padding()
         }
         .navigationTitle("Settings")
         .scrollIndicators(.hidden)
-        .background(Theme.sceneGradient)
+        .background(Theme.sceneGradient(colorScheme))
+    }
+}
+
+struct AccountSettingsView: View {
+    var onSignOut: () -> Void
+    var body: some View {
+        Form {
+            Section(header: Text("Account")) {
+                Button(role: .destructive) {
+                    onSignOut()
+                } label: {
+                    Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+        }
+        .navigationTitle("Account")
     }
 }
 
@@ -723,6 +930,8 @@ private struct StatBadge: View {
     let text: String
     let icon: String
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
@@ -732,7 +941,7 @@ private struct StatBadge: View {
         .font(Typography.captionBold)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Theme.accent.opacity(0.24))
+        .background(Theme.accent(colorScheme).opacity(0.24))
         .foregroundColor(.white.opacity(0.92))
         .clipShape(Capsule())
     }
@@ -744,6 +953,7 @@ private struct PillSlider: View {
     let step: Double
     let gradient: LinearGradient
     let thumbColor: Color
+    let track: LinearGradient
     var height: CGFloat = 14
 
     var body: some View {
@@ -752,7 +962,7 @@ private struct PillSlider: View {
             let progress = CGFloat((value - range.lowerBound) / (range.upperBound - range.lowerBound))
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Theme.cardGradient.opacity(0.6))
+                    .fill(track.opacity(0.6))
                     .overlay(
                         Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1)
                     )
@@ -786,30 +996,49 @@ private struct PillSlider: View {
 
 private struct GradientButtonStyle: ButtonStyle {
     var enabled: Bool
+    var colorScheme: ColorScheme
     func makeBody(configuration: Configuration) -> some View {
+        let palette = Theme.palette(for: colorScheme)
+        let background = enabled
+            ? Theme.ctaGradient(colorScheme)
+            : LinearGradient(colors: [palette.logoBlue.opacity(0.32), palette.logoBlue.opacity(0.22)],
+                             startPoint: .topLeading,
+                             endPoint: .bottomTrailing)
+        let textColor: Color = enabled ? .white : palette.logoDark.opacity(0.85)
+        let stroke: Color = enabled ? Color.clear : palette.logoBlue.opacity(0.45)
         configuration.label
             .frame(maxWidth: .infinity)
-            .background(AnyShapeStyle(enabled ? Theme.primaryGradient : Theme.muted))
-            .foregroundColor(.white)
+            .background(AnyShapeStyle(background))
+            .foregroundColor(textColor)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: Theme.accent.opacity(enabled ? 0.35 : 0.1), radius: 16, x: 0, y: 10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(stroke, lineWidth: enabled ? 0 : 1)
+            )
+            .shadow(color: Theme.accent(colorScheme).opacity(enabled ? 0.35 : 0.14), radius: 16, x: 0, y: 10)
             .opacity(configuration.isPressed ? 0.9 : 1)
             .scaleEffect(configuration.isPressed ? 0.99 : 1)
     }
 }
 
 private struct GhostButtonStyle: ButtonStyle {
+    var colorScheme: ColorScheme
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let palette = Theme.palette(for: colorScheme)
+        let bg = colorScheme == .light ? palette.logoBlue.opacity(0.16) : Color.white.opacity(0.08)
+        let stroke = colorScheme == .light ? palette.logoBlue.opacity(0.45) : Color.white.opacity(0.12)
+        let fg = colorScheme == .light ? palette.logoDark : Color.white
+        return configuration.label
             .frame(maxWidth: .infinity)
-            .background(Color.white.opacity(0.08))
-            .foregroundColor(.white)
+            .background(bg)
+            .foregroundColor(fg)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(stroke, lineWidth: 1)
             )
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .scaleEffect(configuration.isPressed ? 0.99 : 1)
     }
 }
 
@@ -860,24 +1089,25 @@ private enum SocialProvider {
 private struct SocialButton: View {
     let provider: SocialProvider
     var action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
             HStack {
                 ZStack {
                     Circle()
-                        .fill(provider == .google ? Color.white : Color.white.opacity(0.12))
+                        .fill(iconCircleBackground)
                         .frame(width: 30, height: 30)
                         .overlay(
                             Circle()
-                                .stroke(Color.black.opacity(provider == .google ? 0.06 : 0), lineWidth: 0.5)
+                                .stroke(iconCircleStroke, lineWidth: 0.5)
                         )
                     if provider == .google {
                         Text("G").font(.headline.weight(.bold)).foregroundStyle(.black)
                     } else {
                         Image(systemName: provider.icon)
                             .font(.headline)
-                            .foregroundColor(provider.foreground)
+                            .foregroundColor(foreground)
                     }
                 }
                 Text(provider.title)
@@ -886,38 +1116,155 @@ private struct SocialButton: View {
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 12)
-            .background(provider.background)
-            .foregroundColor(provider.foreground)
+            .background(background)
+            .foregroundColor(foreground)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(provider.stroke, lineWidth: 1)
+                    .stroke(stroke, lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(colorScheme == .light ? 0.14 : 0.24), radius: 10, x: 0, y: 6)
         }
         .buttonStyle(.plain)
+    }
+
+    private var palette: Theme.Palette { Theme.palette(for: colorScheme) }
+
+    private var foreground: Color {
+        switch provider {
+        case .apple: return .white
+        case .google: return .black
+        case .email: return colorScheme == .light ? palette.logoDark : .white
+        }
+    }
+
+    private var background: Color {
+        switch provider {
+        case .apple: return .black
+        case .google: return Color.white
+        case .email: return colorScheme == .light ? palette.logoBlue.opacity(0.16) : Color.white.opacity(0.08)
+        }
+    }
+
+    private var stroke: Color {
+        switch provider {
+        case .apple: return Color.white.opacity(0.16)
+        case .google: return Color.black.opacity(0.08)
+        case .email: return colorScheme == .light ? palette.logoBlue.opacity(0.45) : Color.white.opacity(0.16)
+        }
+    }
+
+    private var iconCircleBackground: Color {
+        switch provider {
+        case .google: return Color.white
+        case .apple: return Color.white.opacity(0.16)
+        case .email: return colorScheme == .light ? palette.logoBlue.opacity(0.22) : Color.white.opacity(0.12)
+        }
+    }
+
+    private var iconCircleStroke: Color {
+        switch provider {
+        case .google: return Color.black.opacity(0.06)
+        case .apple: return Color.white.opacity(0.0)
+        case .email: return colorScheme == .light ? palette.logoBlue.opacity(0.35) : Color.white.opacity(0.0)
+        }
+    }
+}
+
+struct BrandLogo: View {
+    var size: CGFloat = 80
+
+    var body: some View {
+        Image("BrandLogo")
+            .renderingMode(.original)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+    }
+}
+
+struct LogoMark: View {
+    var size: CGFloat = 80
+    var invert: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = Theme.palette(for: colorScheme)
+        let primary = invert ? (colorScheme == .dark ? palette.logoLight : palette.logoDark) : palette.logoBlue
+        let secondary = invert ? palette.logoBlue : (colorScheme == .dark ? palette.logoDark : palette.logoLight)
+        let core = Color.white
+        let ring = Color.white
+        let radius = size * 0.32
+        let line = size * 0.27
+        let coreRadius = size * 0.14
+        let ringRadius = size * 0.23
+        let ringWidth = size * 0.065
+        ZStack {
+            ArcShape(start: -200, end: 40)
+                .stroke(secondary, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .frame(width: radius * 2, height: radius * 2)
+                .offset(x: -size * 0.02, y: size * 0.01)
+            ArcShape(start: -20, end: 220)
+                .stroke(primary, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .frame(width: radius * 2, height: radius * 2)
+                .offset(x: size * 0.02, y: -size * 0.01)
+
+            Circle()
+                .fill(core)
+                .frame(width: coreRadius * 2, height: coreRadius * 2)
+
+            ArcShape(start: -115, end: -65)
+                .stroke(ring, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                .frame(width: ringRadius * 2, height: ringRadius * 2)
+            ArcShape(start: 65, end: 115)
+                .stroke(ring, style: StrokeStyle(lineWidth: ringWidth, lineCap: .round))
+                .frame(width: ringRadius * 2, height: ringRadius * 2)
+        }
+        .frame(width: size, height: size)
+        .drawingGroup()
+    }
+}
+
+private struct ArcShape: Shape {
+    let start: Double
+    let end: Double
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        path.addArc(center: center,
+                    radius: radius,
+                    startAngle: .degrees(start),
+                    endAngle: .degrees(end),
+                    clockwise: false)
+        return path
     }
 }
 
 private struct DividerView: View {
     let label: String
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
+        let palette = Theme.palette(for: colorScheme)
+        let textColor = colorScheme == .light ? palette.logoDark.opacity(0.72) : Color.white.opacity(0.55)
+        let lineColor = colorScheme == .light ? palette.logoBlue.opacity(0.25) : Color.white.opacity(0.12)
         HStack {
-            Rectangle().frame(height: 1).foregroundStyle(Color.white.opacity(0.12))
+            Rectangle().frame(height: 1).foregroundStyle(lineColor)
             Text(label.uppercased())
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.white.opacity(0.55))
-            Rectangle().frame(height: 1).foregroundStyle(Color.white.opacity(0.12))
+                .foregroundStyle(textColor)
+            Rectangle().frame(height: 1).foregroundStyle(lineColor)
         }
     }
 }
 
 private extension View {
-    func cardStyle() -> some View {
+    func cardStyle(_ scheme: ColorScheme) -> some View {
         self
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardGradient)
+            .background(Theme.cardGradient(scheme))
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -927,27 +1274,27 @@ private extension View {
     }
 }
 
-private func floatingField(_ title: String, text: Binding<String>, icon: String) -> some View {
+private func floatingField(_ title: String, text: Binding<String>, icon: String, colorScheme: ColorScheme) -> some View {
     VStack(alignment: .leading, spacing: 6) {
         Label(title, systemImage: icon)
             .font(.caption)
             .foregroundColor(.secondary)
         TextField(title, text: text)
             .padding()
-            .background(Theme.cardGradient)
+            .background(Theme.cardGradient(colorScheme))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
     }
 }
 
-private func floatingSecure(_ title: String, text: Binding<String>, icon: String) -> some View {
+private func floatingSecure(_ title: String, text: Binding<String>, icon: String, colorScheme: ColorScheme) -> some View {
     VStack(alignment: .leading, spacing: 6) {
         Label(title, systemImage: icon)
             .font(.caption)
             .foregroundColor(.secondary)
         SecureField(title, text: text)
             .padding()
-            .background(Theme.cardGradient)
+            .background(Theme.cardGradient(colorScheme))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.06), lineWidth: 1))
     }
@@ -966,36 +1313,107 @@ private enum Typography {
 }
 
 private enum Theme {
-    static let bgTop    = Color(red: 0.08, green: 0.12, blue: 0.24)   // deep navy
-    static let bgMid    = Color(red: 0.10, green: 0.16, blue: 0.30)
-    static let bgBottom = Color(red: 0.09, green: 0.20, blue: 0.36)
-    static let glow     = Color(red: 0.18, green: 0.48, blue: 0.92).opacity(0.48)
+    struct Palette {
+        let bgTop: Color
+        let bgMid: Color
+        let bgBottom: Color
+        let glow: Color
+        let accent: Color
+        let accent2: Color
+        let accentWarm: Color
+        let logoDark: Color
+        let logoBlue: Color
+        let logoLight: Color
+        let cardTop: Color
+        let cardBottom: Color
+    }
 
-    static let accent = Color(red: 0.19, green: 0.84, blue: 0.43) // spotify-like green
-    static let accent2 = Color(red: 0.06, green: 0.67, blue: 0.76)
-    static let accentWarm = Color(red: 0.99, green: 0.74, blue: 0.30)
+    static let dark = Palette(
+        bgTop: Color(red: 0.07, green: 0.11, blue: 0.16),
+        bgMid: Color(red: 0.09, green: 0.16, blue: 0.22),
+        bgBottom: Color(red: 0.10, green: 0.20, blue: 0.28),
+        glow: Color(red: 0.31, green: 0.56, blue: 0.80).opacity(0.35),
+        accent: Color(red: 0.31, green: 0.53, blue: 0.75),
+        accent2: Color(red: 0.17, green: 0.28, blue: 0.33),
+        accentWarm: Color(red: 0.44, green: 0.68, blue: 0.90),
+        logoDark: Color(red: 0.20, green: 0.30, blue: 0.36),
+        logoBlue: Color(red: 0.36, green: 0.57, blue: 0.78),
+        logoLight: Color(red: 0.75, green: 0.84, blue: 0.90),
+        cardTop: Color(red: 0.14, green: 0.21, blue: 0.30).opacity(0.92),
+        cardBottom: Color(red: 0.08, green: 0.14, blue: 0.22).opacity(0.92)
+    )
 
-    static let muted = LinearGradient(colors: [Color(red: 0.18, green: 0.24, blue: 0.34).opacity(0.9),
-                                               Color(red: 0.12, green: 0.18, blue: 0.28).opacity(0.9)],
-                                      startPoint: .topLeading,
-                                      endPoint: .bottomTrailing)
-    static let cardTop = Color(red: 0.16, green: 0.22, blue: 0.32).opacity(0.9)
-    static let cardBottom = Color(red: 0.10, green: 0.16, blue: 0.26).opacity(0.9)
+    static let light = Palette(
+        bgTop: Color(red: 0.95, green: 0.97, blue: 0.99),
+        bgMid: Color(red: 0.92, green: 0.95, blue: 0.98),
+        bgBottom: Color(red: 0.88, green: 0.93, blue: 0.97),
+        glow: Color(red: 0.60, green: 0.75, blue: 0.90).opacity(0.30),
+        accent: Color(red: 0.31, green: 0.53, blue: 0.75),
+        accent2: Color(red: 0.20, green: 0.30, blue: 0.36),
+        accentWarm: Color(red: 0.56, green: 0.72, blue: 0.88),
+        logoDark: Color(red: 0.20, green: 0.30, blue: 0.36),
+        logoBlue: Color(red: 0.36, green: 0.57, blue: 0.78),
+        logoLight: Color(red: 0.86, green: 0.91, blue: 0.95),
+        cardTop: Color(red: 0.97, green: 0.98, blue: 1.00).opacity(0.96),
+        cardBottom: Color(red: 0.90, green: 0.94, blue: 0.98).opacity(0.96)
+    )
 
-    static let primaryGradient = LinearGradient(colors: [accent, accent2],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing)
-    static let cardGradient = LinearGradient(colors: [cardTop, cardBottom],
-                                             startPoint: .topLeading,
-                                             endPoint: .bottomTrailing)
+    static func palette(for scheme: ColorScheme) -> Palette {
+        scheme == .dark ? dark : light
+    }
 
-    static let sceneGradient = LinearGradient(colors: [bgTop, bgMid, bgBottom],
-                                              startPoint: .topLeading,
-                                              endPoint: .bottomTrailing)
+    static func accent(_ scheme: ColorScheme) -> Color { palette(for: scheme).accent }
+    static func accent2(_ scheme: ColorScheme) -> Color { palette(for: scheme).accent2 }
+    static func accentWarm(_ scheme: ColorScheme) -> Color { palette(for: scheme).accentWarm }
+    static func logoDark(_ scheme: ColorScheme) -> Color { palette(for: scheme).logoDark }
+    static func logoBlue(_ scheme: ColorScheme) -> Color { palette(for: scheme).logoBlue }
+    static func logoLight(_ scheme: ColorScheme) -> Color { palette(for: scheme).logoLight }
+    static func glow(_ scheme: ColorScheme) -> Color { palette(for: scheme).glow }
+
+    static func primaryGradient(_ scheme: ColorScheme) -> LinearGradient {
+        let p = palette(for: scheme)
+        return LinearGradient(colors: [p.accent, p.accentWarm],
+                              startPoint: .topLeading,
+                              endPoint: .bottomTrailing)
+    }
+
+    static func ctaGradient(_ scheme: ColorScheme) -> LinearGradient {
+        let p = palette(for: scheme)
+        if scheme == .light {
+            return LinearGradient(colors: [p.logoBlue, p.logoDark],
+                                  startPoint: .topLeading,
+                                  endPoint: .bottomTrailing)
+        } else {
+            return primaryGradient(scheme)
+        }
+    }
+
+    static func muted(_ scheme: ColorScheme) -> LinearGradient {
+        let p = palette(for: scheme)
+        return LinearGradient(colors: [p.cardTop.opacity(0.8), p.cardBottom.opacity(0.8)],
+                              startPoint: .topLeading,
+                              endPoint: .bottomTrailing)
+    }
+
+    static func cardGradient(_ scheme: ColorScheme) -> LinearGradient {
+        let p = palette(for: scheme)
+        return LinearGradient(colors: [p.cardTop, p.cardBottom],
+                              startPoint: .topLeading,
+                              endPoint: .bottomTrailing)
+    }
+
+    static func sceneGradient(_ scheme: ColorScheme) -> LinearGradient {
+        let p = palette(for: scheme)
+        return LinearGradient(colors: [p.bgTop, p.bgMid, p.bgBottom],
+                              startPoint: .topLeading,
+                              endPoint: .bottomTrailing)
+    }
 }
 
 // Animated gradient blobs for subtle motion
 private struct AnimatedBlobBackground: View {
+    let palette: Theme.Palette
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1/24)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
@@ -1006,9 +1424,9 @@ private struct AnimatedBlobBackground: View {
                 let offset2 = CGSize(width: cos(t/2.8) * w*0.2,  height: sin(t/3.8) * h*0.22)
                 let offset3 = CGSize(width: sin(t/4.8) * w*0.3,  height: cos(t/5.2) * h*0.16)
 
-                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.35 + offset1.width, y: h*0.3 + offset1.height), color: Theme.accent.opacity(0.18))
-                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.7 + offset2.width,  y: h*0.15 + offset2.height), color: Theme.accent2.opacity(0.16))
-                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.5 + offset3.width,  y: h*0.75 + offset3.height), color: Theme.accentWarm.opacity(0.10))
+                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.35 + offset1.width, y: h*0.3 + offset1.height), color: palette.accent.opacity(0.18))
+                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.7 + offset2.width,  y: h*0.15 + offset2.height), color: palette.accent2.opacity(0.16))
+                drawBlob(context: &context, size: size, origin: CGPoint(x: w*0.5 + offset3.width,  y: h*0.75 + offset3.height), color: palette.accentWarm.opacity(0.10))
             }
         }
     }
